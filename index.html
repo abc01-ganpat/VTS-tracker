@@ -17,12 +17,7 @@
       height: 100dvh; overflow: hidden; 
     }
 
-    /* Main Container Grid */
-    .app-container {
-      display: grid;
-      height: 100%;
-      grid-template-rows: auto 1fr; /* Header then Content */
-    }
+    .app-container { display: grid; height: 100%; grid-template-rows: auto 1fr; }
 
     .header { 
       padding: 4px 15px; display: flex; justify-content: space-between; align-items: center; 
@@ -34,42 +29,29 @@
     .status-badge.active .recording-dot { display: block; animation: blink 1s infinite; }
     @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-    /* Content Layout - Changes on Rotation */
-    .content-layout {
-      display: grid;
-      grid-template-columns: 1fr;
-      overflow: hidden;
-      height: 100%;
-    }
+    .content-layout { display: grid; grid-template-columns: 1fr; overflow: hidden; height: 100%; }
 
-    /* Left Side: Video */
-    .video-section {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 5px;
-      background: #000;
-    }
+    .video-section { display: flex; align-items: center; justify-content: center; padding: 5px; background: #000; }
     .video-wrapper {
-      width: min(90vw, 75vh);
-      height: min(90vw, 75vh);
-      position: relative;
-      border-radius: 8px;
-      overflow: hidden;
-      border: 1px solid #444;
-      box-shadow: 0 0 20px rgba(0,0,0,0.8);
+      width: min(90vw, 75vh); height: min(90vw, 75vh);
+      position: relative; border-radius: 8px; overflow: hidden; border: 1px solid #444; box-shadow: 0 0 20px rgba(0,0,0,0.8);
     }
     #video { width: 100%; height: 100%; object-fit: cover; }
 
-    /* Right Side: Data & Controls */
-    .data-section {
-      display: flex;
-      flex-direction: column;
-      padding: 10px 15px;
-      overflow-y: auto;
-      gap: 10px;
-      background: var(--bg-color);
+    .data-section { display: flex; flex-direction: column; padding: 10px 15px; overflow-y: auto; gap: 10px; background: var(--bg-color); }
+
+    /* Loading Overlay */
+    #authOverlay {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.9); display: none; flex-direction: column;
+      align-items: center; justify-content: center; z-index: 9999;
     }
+    .loader {
+      border: 4px solid #333; border-top: 4px solid var(--accent-green);
+      border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite;
+      margin-bottom: 20px;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
     .btn-container { width: 100%; }
     button { width: 100%; padding: 14px; border-radius: 12px; border: none; font-size: 14px; font-weight: 700; cursor: pointer; transition: 0.2s; }
@@ -84,23 +66,21 @@
 
     #log-status { text-align: center; font-size: 10px; color: var(--text-dim); margin-top: 2px; }
 
-    /* LANDSCAPE OPTIMIZATION */
     @media (orientation: landscape) {
-      .content-layout {
-        grid-template-columns: 1fr 1fr; /* Split Screen */
-      }
+      .content-layout { grid-template-columns: 1fr 1fr; }
       .video-section { padding: 10px; }
-      .video-wrapper { 
-        width: min(45vw, 85vh);
-        height: min(45vw, 85vh);
-      } 
+      .video-wrapper { width: min(45vw, 85vh); height: min(45vw, 85vh); } 
       .data-section { border-left: 1px solid #222; }
     }
-
     canvas { display: none; }
   </style>
 </head>
 <body>
+
+<div id="authOverlay">
+  <div class="loader"></div>
+  <div style="font-weight: bold;">Authenticating Please wait!...</div>
+</div>
 
 <div class="app-container">
   <div class="header">
@@ -109,12 +89,10 @@
   </div>
 
   <div class="content-layout">
-    <!-- Video Column -->
     <div class="video-section">
       <div class="video-wrapper"><video id="video" autoplay playsinline muted></video></div>
     </div>
 
-    <!-- Data Column -->
     <div class="data-section">
       <div class="btn-container">
         <button id="startBtn">START TRACKING</button>
@@ -140,10 +118,10 @@
 
     let db, stream, video, canvas, ctx, isTracking = false, timer = null, dataBuffer = [], sessionId = "";
     let userAcronym = localStorage.getItem('vts_acronym') || "";
+    let userPassword = localStorage.getItem('vts_password') || "";
     let currentSensors = { lat: 0, lng: 0, speed: 0.0, alpha: 0, beta: 0, gamma: 0 };
     let isUploading = false;
 
-    // IndexedDB & Queue logic (Same as previous version)
     const initDB = () => new Promise((resolve) => {
       const request = indexedDB.open("VTS_Queue", 1);
       request.onupgradeneeded = (e) => e.target.result.createObjectStore("uploads", { keyPath: "id", autoIncrement: true });
@@ -157,7 +135,8 @@
     };
 
     const getQueueCount = () => new Promise((resolve) => {
-      const countReq = db.transaction("uploads", "readonly").objectStore("uploads").count();
+      const tx = db.transaction("uploads", "readonly");
+      const countReq = tx.objectStore("uploads").count();
       countReq.onsuccess = () => resolve(countReq.result);
     });
 
@@ -171,14 +150,14 @@
         const cursor = e.target.result;
         if (cursor) {
           const item = cursor.value;
-          updateStatus(`Uploading...`);
+          updateStatus(`Syncing: ${item.filename.slice(-15)}`);
           try {
-            await fetch(API_URL, { method: "POST", mode: "no-cors", body: JSON.stringify({ data: item.data, filename: item.filename }) });
+            await fetch(API_URL, { method: "POST", mode: "no-cors", body: JSON.stringify({ password: userPassword, data: item.data, filename: item.filename }) });
             const delTx = db.transaction("uploads", "readwrite");
             delTx.objectStore("uploads").delete(item.id);
             delTx.oncomplete = () => { isUploading = false; processQueue(); };
-          } catch (err) { updateStatus("Upload Paused (Offline)"); isUploading = false; }
-        } else { isUploading = false; updateStatus(isTracking ? "Recording..." : "Sync Complete"); }
+          } catch (err) { updateStatus("Sync Paused (Offline)"); isUploading = false; }
+        } else { isUploading = false; if(!isTracking) updateStatus("Sync Complete"); }
       };
     };
 
@@ -186,12 +165,44 @@
       video = document.getElementById('video'); canvas = document.getElementById('canvas');
       canvas.width = RESOLUTION; canvas.height = RESOLUTION; ctx = canvas.getContext('2d');
       await initDB();
+
       if (!userAcronym) {
         let name = ""; while (!name) { name = prompt("Enter Name:"); }
         userAcronym = generateAcronym(name); localStorage.setItem('vts_acronym', userAcronym);
       }
+
+      let isAuthenticated = false;
+      const overlay = document.getElementById('authOverlay');
+      while (!isAuthenticated) {
+        if (!userPassword) {
+          let pass = "";
+          while (pass.length !== 13) {
+            pass = (prompt("Enter 13-character Security Key:") || "");
+            if (pass === "") return updateStatus("Auth Required");
+          }
+          userPassword = pass;
+        }
+        overlay.style.display = 'flex';
+        const result = await verifyPasswordServer(userPassword);
+        overlay.style.display = 'none';
+        if (result.success) { localStorage.setItem('vts_password', userPassword); isAuthenticated = true; }
+        else { alert("Authentication Failed!"); userPassword = ""; localStorage.removeItem('vts_password'); }
+      }
+
+      updateStatus(`User: ${userAcronym}`);
       processQueue(); await initCamera(); initSensors();
     };
+
+    function verifyPasswordServer(pass) {
+      return new Promise((resolve) => {
+        const callbackName = 'auth_cb_' + Math.floor(Math.random() * 1000000);
+        const script = document.createElement('script');
+        window[callbackName] = (res) => { document.body.removeChild(script); delete window[callbackName]; resolve(res); };
+        script.src = `${API_URL}?action=validate&password=${pass}&callback=${callbackName}`;
+        script.onerror = () => resolve({ success: false });
+        document.body.appendChild(script);
+      });
+    }
 
     function generateAcronym(name) {
       const words = name.trim().split(/\s+/);
@@ -204,7 +215,7 @@
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: RESOLUTION, height: RESOLUTION } });
         video.srcObject = stream; await video.play(); return true;
-      } catch (err) { updateStatus("Camera Error"); return false; }
+      } catch (err) { return false; }
     }
 
     function initSensors() {
@@ -214,7 +225,7 @@
           currentSensors.lng = Number(pos.coords.longitude.toFixed(3));
           currentSensors.speed = Number(((pos.coords.speed || 0) * 3.6).toFixed(3));
           updateUI();
-        }, (err) => {}, { enableHighAccuracy: true });
+        }, null, { enableHighAccuracy: true });
       }
       window.addEventListener('deviceorientation', (e) => {
         currentSensors.alpha = e.alpha ? Number(e.alpha.toFixed(3)) : 0;
@@ -225,34 +236,15 @@
     }
 
     document.getElementById('startBtn').onclick = async () => {
-      // 1. Session ID
       sessionId = Math.floor(Math.random() * 0xFFFFFF).toString(16).toUpperCase().padStart(6, '0');
-      
-      // 2. iOS Specific orientation permission
       if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
         try { await DeviceOrientationEvent.requestPermission(); } catch (e) {}
       }
-      
-      // 3. Re-check/Re-init Camera
-      if (!stream || !stream.active) {
-        const camOk = await initCamera();
-        if (!camOk) {
-          alert("Camera permission is required to start tracking.");
-          return;
-        }
-      }
-
-      // 4. Re-init Sensors (Geolocation)
+      if (!stream || !stream.active) await initCamera();
       initSensors();
-
-      // 5. Start Tracking
-      isTracking = true; 
-      dataBuffer = [];
-      document.getElementById('startBtn').style.display = 'none'; 
-      document.getElementById('endBtn').style.display = 'block';
-      document.getElementById('statusBadge').classList.add('active'); 
-      document.getElementById('statusText').innerText = "Recording";
-      
+      isTracking = true; dataBuffer = [];
+      document.getElementById('startBtn').style.display = 'none'; document.getElementById('endBtn').style.display = 'block';
+      document.getElementById('statusBadge').classList.add('active'); document.getElementById('statusText').innerText = "Recording";
       updateStatus(`Session: ${sessionId}`);
       timer = setInterval(captureFrame, 1000 / CAPTURE_FPS);
     };
@@ -263,6 +255,7 @@
       document.getElementById('statusBadge').classList.remove('active'); document.getElementById('statusText').innerText = "Ready";
       if (dataBuffer.length > 0) queueChunk([...dataBuffer]);
       dataBuffer = [];
+      updateStatus("Session Finished.");
     };
 
     function captureFrame() {
