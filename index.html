@@ -138,8 +138,8 @@
     let db, stream, video, canvas, ctx, isTracking = false, timer = null, dataBuffer = [], sessionId = "";
     let userAcronym = localStorage.getItem('vts_acronym') || "";
     let userPassword = localStorage.getItem('vts_password') || "";
-    let currentSensors = { lat: 0, lng: 0, speed: 0.0, alpha: 0, beta: 0, gamma: 0 };
-    let isUploading = false, currentFPS = 1;
+    let currentSensors = { lat: 0, lng: 0, speed: 0.0, alpha: 0, beta: 0, gamma: 0, screen_angle: 0, webkit_heading: null, heading_absolute: false };
+    let isUploading = false, currentFPS = 1, sensorsInitialized = false;
 
     // --- MODAL SYSTEM ---
     const showModal = (config) => {
@@ -293,12 +293,24 @@
           updateUI();
         }, null, { enableHighAccuracy: true });
       }
-      window.addEventListener('deviceorientation', (e) => {
-        currentSensors.alpha = e.alpha ? Number(e.alpha.toFixed(3)) : 0;
-        currentSensors.beta = e.beta ? Number(e.beta.toFixed(3)) : 0;
-        currentSensors.gamma = e.gamma ? Number(e.gamma.toFixed(3)) : 0;
-        updateUI();
-      });
+      if (!sensorsInitialized) {
+        sensorsInitialized = true;
+        const isAbsoluteEvent = 'ondeviceorientationabsolute' in window;
+        const handleOrientation = (e) => {
+          currentSensors.alpha = e.alpha != null ? Number(e.alpha.toFixed(3)) : 0;
+          currentSensors.beta  = e.beta  != null ? Number(e.beta.toFixed(3))  : 0;
+          currentSensors.gamma = e.gamma != null ? Number(e.gamma.toFixed(3)) : 0;
+          currentSensors.screen_angle = (window.screen && window.screen.orientation) ? window.screen.orientation.angle : (window.orientation || 0);
+          currentSensors.webkit_heading = (e.webkitCompassHeading != null) ? Number(e.webkitCompassHeading.toFixed(3)) : null;
+          currentSensors.heading_absolute = isAbsoluteEvent || currentSensors.webkit_heading !== null;
+          updateUI();
+        };
+        if (isAbsoluteEvent) {
+          window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+        } else {
+          window.addEventListener('deviceorientation', handleOrientation, true);
+        }
+      }
     }
 
     document.getElementById('startBtn').onclick = async () => {
