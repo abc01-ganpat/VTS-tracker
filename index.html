@@ -220,14 +220,9 @@
 
     // --- LOGIC & HELPERS ---
     function verifyPasswordServer(pass) {
-      return new Promise((resolve) => {
-        const callbackName = 'auth_cb_' + Math.floor(Math.random() * 1000000);
-        const script = document.createElement('script');
-        window[callbackName] = (res) => { document.body.removeChild(script); delete window[callbackName]; resolve(res); };
-        script.src = `${API_URL}?action=validate&password=${encodeURIComponent(pass)}&callback=${callbackName}`;
-        script.onerror = () => resolve({ success: false });
-        document.body.appendChild(script);
-      });
+      return fetch(`${API_URL}?action=validate&password=${encodeURIComponent(pass)}`)
+        .then(r => r.json())
+        .catch(() => ({ success: false }));
     }
 
     const initDB = () => new Promise((resolve) => {
