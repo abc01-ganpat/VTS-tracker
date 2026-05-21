@@ -195,6 +195,7 @@
       const ok = await showModal({ title: "Reset Password", msg: "Confirm password reset?", cancel: true });
       if (ok) {
         userPassword = ""; localStorage.removeItem('vts_password');
+        userAcronym = ""; localStorage.removeItem('vts_acronym');
         await runAuthFlow();
       }
     };
