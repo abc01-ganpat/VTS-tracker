@@ -86,7 +86,7 @@
   <div class="modal-box">
     <div id="modalTitle" class="modal-title">Title</div>
     <div id="modalMsg" class="modal-msg">Message goes here...</div>
-    <input id="modalInput" class="modal-input" type="text" spellcheck="false" autocomplete="off">
+    <input id="modalInput" class="modal-input" type="text" spellcheck="false" autocomplete="off" autocapitalize="none" autocorrect="off">
     <button id="modalConfirm" class="modal-btn">CONTINUE</button>
     <button id="modalCancel" class="modal-btn secondary">CANCEL</button>
   </div>
@@ -224,7 +224,7 @@
         const callbackName = 'auth_cb_' + Math.floor(Math.random() * 1000000);
         const script = document.createElement('script');
         window[callbackName] = (res) => { document.body.removeChild(script); delete window[callbackName]; resolve(res); };
-        script.src = `${API_URL}?action=validate&password=${pass}&callback=${callbackName}`;
+        script.src = `${API_URL}?action=validate&password=${encodeURIComponent(pass)}&callback=${callbackName}`;
         script.onerror = () => resolve({ success: false });
         document.body.appendChild(script);
       });
