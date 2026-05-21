@@ -119,6 +119,7 @@
       <div class="sensor-grid">
         <div class="sensor-card"><span class="sensor-label">Speed</span><span class="sensor-value"><span id="val_speed">0.000</span> <small>km/h</small></span></div>
         <div class="sensor-card"><span class="sensor-label">Queue</span><span class="sensor-value" id="val_buffer">0 files pending</span></div>
+        <div class="sensor-card" style="grid-column: span 2;"><span class="sensor-label">FPS</span><span class="sensor-value"><span id="val_fps">1</span> <small>fps</small></span></div>
         <div class="sensor-card" style="grid-column: span 2;"><span class="sensor-label">Location</span><span class="sensor-value" id="val_gps">Searching...</span></div>
         <div class="sensor-card" style="grid-column: span 2;"><span class="sensor-label">Orientation</span><span class="sensor-value" id="val_orient">0.000° / 0.000° / 0.000°</span></div>
       </div>
@@ -138,7 +139,7 @@
     let userAcronym = localStorage.getItem('vts_acronym') || "";
     let userPassword = localStorage.getItem('vts_password') || "";
     let currentSensors = { lat: 0, lng: 0, speed: 0.0, alpha: 0, beta: 0, gamma: 0 };
-    let isUploading = false;
+    let isUploading = false, currentFPS = 1;
 
     // --- MODAL SYSTEM ---
     const showModal = (config) => {
@@ -288,6 +289,11 @@
           currentSensors.lat = Number(pos.coords.latitude.toFixed(3));
           currentSensors.lng = Number(pos.coords.longitude.toFixed(3));
           currentSensors.speed = Number(((pos.coords.speed || 0) * 3.6).toFixed(3));
+          const newFPS = Math.min(Math.max(Math.floor((pos.coords.speed || 0) * 3.6 / 10) + 1, 2), 12);
+          if (newFPS !== currentFPS) {
+            currentFPS = newFPS;
+            if (isTracking) { clearInterval(timer); timer = setInterval(captureFrame, 1000 / currentFPS); }
+          }
           updateUI();
         }, null, { enableHighAccuracy: true });
       }
@@ -310,7 +316,7 @@
       document.getElementById('startBtn').style.display = 'none'; document.getElementById('endBtn').style.display = 'block';
       document.getElementById('statusBadge').classList.add('active'); document.getElementById('statusText').innerText = "Recording";
       updateStatus(`Session: ${sessionId}`);
-      timer = setInterval(captureFrame, 1000 / CAPTURE_FPS);
+      timer = setInterval(captureFrame, 1000 / currentFPS);
     };
 
     document.getElementById('endBtn').onclick = () => {
@@ -341,6 +347,7 @@
 
     function updateUI() {
       document.getElementById('val_speed').innerText = currentSensors.speed.toFixed(3);
+      document.getElementById('val_fps').innerText = currentFPS;
       document.getElementById('val_gps').innerText = `${currentSensors.lat.toFixed(3)}, ${currentSensors.lng.toFixed(3)}`;
       document.getElementById('val_orient').innerText = `${currentSensors.alpha.toFixed(3)}° / ${currentSensors.beta.toFixed(3)}° / ${currentSensors.gamma.toFixed(3)}°`;
       getQueueCount().then(c => document.getElementById('val_buffer').innerText = `${c} files pending`);
